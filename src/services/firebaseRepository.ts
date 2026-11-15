@@ -64,11 +64,22 @@ function mapCareNote(id: string, data: DocumentData): CareNote {
 
 export function subscribeToSaarthiCare(uid: string, displayName: string, email: string, onState: (state: SaarthiCareState) => void, onError: (error: Error) => void): Unsubscribe {
   if (!db) throw new Error('Firebase Firestore is not configured.');
+  const firestore = db;
   let patientId = '';
   let membershipRole: Role = 'owner';
   let memberPreferences: NotificationPreference = { emailMedicationReminders: true, emailMissedDoseAlerts: true, emailAppointmentReminders: true, pushNotifications: false };
   let profile: DocumentData = {};
-  const rows: Record<string, Array<{ id: string; data: DocumentData }>> = { medications: [], doseLogs: [], appointments: [], careCircleMembers: [], careNotes: [], auditLogs: [] };
+  type CollectionName =
+  | 'medications'
+  | 'doseLogs'
+  | 'appointments'
+  | 'careCircleMembers'
+  | 'careNotes'
+  | 'auditLogs';
+
+type Row = { id: string; data: DocumentData };
+
+const rows: Record<CollectionName, Row[]> = { medications: [], doseLogs: [], appointments: [], careCircleMembers: [], careNotes: [], auditLogs: [] };
   const loaded = new Set<string>();
   let innerUnsubs: Unsubscribe[] = [];
 
@@ -118,8 +129,8 @@ export function subscribeToSaarthiCare(uid: string, displayName: string, email: 
     patientId = nextPatientId;
     membershipRole = membership.data().role as Role;
     loaded.clear();
-    const userRef = doc(db, 'users', uid);
-    const profileRef = doc(db, 'patientProfiles', patientId);
+    const userRef = doc(firestore, 'users', uid);
+    const profileRef = doc(firestore, 'patientProfiles', patientId);
     innerUnsubs.push(onSnapshot(userRef, (userSnapshot) => {
       profile.userRecord = userSnapshot.data() ?? {};
       loaded.add('users'); emit();
@@ -131,7 +142,7 @@ export function subscribeToSaarthiCare(uid: string, displayName: string, email: 
     }, (error) => onError(error)));
     const collections = ['medications', 'doseLogs', 'appointments', 'careCircleMembers', 'careNotes', 'auditLogs'] as const;
     for (const collectionName of collections) {
-      const q = query(collection(db, collectionName), where('patientId', '==', patientId));
+      const q = query(collection(firestore, collectionName), where('patientId', '==', patientId));
       innerUnsubs.push(onSnapshot(q, (collectionSnapshot) => {
         rows[collectionName] = collectionSnapshot.docs.map((entry) => ({ id: entry.id, data: entry.data() }));
         loaded.add(collectionName); emit();

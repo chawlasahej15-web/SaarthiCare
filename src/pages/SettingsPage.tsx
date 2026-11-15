@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BellRing, Check, Eye, Mail, ShieldCheck, Type, Vibrate } from 'lucide-react';
 import { useSaarthiCare } from '../context/SaarthiCareContext';
-import { Badge, Button, Card, SectionHeading } from '../components/ui';
+import { Badge, Card, SectionHeading } from '../components/ui';
 import { isFirebaseConfigured } from '../lib/firebase';
 import { registerBrowserPush, unregisterBrowserPush } from '../services/firebasePush';
 

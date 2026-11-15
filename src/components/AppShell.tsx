@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Bell, CalendarDays, ChevronDown, HeartHandshake, LayoutDashboard, Menu, Pill, Settings, ShieldCheck, Users, X, Sparkles } from 'lucide-react';
+import { Bell, CalendarDays, ChevronDown, HeartHandshake, LayoutDashboard, Menu, Pill, Settings, ShieldCheck, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { useSaarthiCare } from '../context/SaarthiCareContext';
 import { isFirebaseConfigured } from '../lib/firebase';
