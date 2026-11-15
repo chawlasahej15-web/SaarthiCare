@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function memberPath(patientId) { return /databases/$(database)/documents/careCircleMembers/$(patientId + '_' + request.auth.uid); }
+    function isMember(patientId) {
+      return signedIn() && exists(memberPath(patientId)) && get(memberPath(patientId)).data.status == 'active';
+    }
+    function memberRole(patientId) {
+      return get(memberPath(patientId)).data.role;
+    }
+    function canManage(patientId, permission) {
+      return isMember(patientId) && (memberRole(patientId) == 'owner' || get(memberPath(patientId)).data.permissions[permission] == true);
+    }
+    function validPatientId(patientId) { return patientId is string && patientId.size() > 0 && patientId.size() < 128; }
+
+    match /users/{uid} {
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email;
+      allow read, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /patientProfiles/{patientId} {
+      allow create: if signedIn() && validPatientId(patientId)
+        && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isMember(patientId);
+      allow update: if isMember(patientId)
+        && (memberRole(patientId) == 'owner' || request.auth.uid == patientId)
+        && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if false;
+    }
+
+    // Membership is created/changed only by trusted callable Cloud Functions.
+    match /careCircleMembers/{membershipId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid
+        || (signedIn() && exists(/databases/$(database)/documents/patientProfiles/$(resource.data.patientId))
+          && isMember(resource.data.patientId));
+      allow create, update, delete: if false;
+    }
+
+    match /medications/{medicationId} {
+      allow read: if isMember(resource.data.patientId);
+      allow create: if signedIn() && validPatientId(request.resource.data.patientId)
+        && canManage(request.resource.data.patientId, 'manageMedications')
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isMember(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && canManage(resource.data.patientId, 'manageMedications');
+      allow delete: if false;
+    }
+
+    match /medicationSchedules/{scheduleId} {
+      allow read: if isMember(resource.data.patientId);
+      allow create: if canManage(request.resource.data.patientId, 'manageMedications')
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isMember(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && canManage(resource.data.patientId, 'manageMedications');
+      allow delete: if false;
+    }
+
+    match /doseLogs/{doseLogId} {
+      allow read: if isMember(resource.data.patientId);
+      allow create: if isMember(request.resource.data.patientId)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdBy == request.auth.uid;
+      // Dose confirmations are handled atomically by the confirmDose callable function.
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isMember(resource.data.patientId);
+      allow create: if canManage(request.resource.data.patientId, 'manageAppointments')
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isMember(resource.data.patientId)
+        && request.resource.data.patientId == resource.data.patientId
+        && canManage(resource.data.patientId, 'manageAppointments');
+      allow delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isMember(resource.data.patientId)
+        && (resource.data.recipientUid == request.auth.uid || memberRole(resource.data.patientId) == 'owner');
+      allow create, delete: if false;
+      allow update: if signedIn() && resource.data.recipientUid == request.auth.uid
+        && isMember(resource.data.patientId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'isRead']);
+    }
+
+    match /careNotes/{noteId} {
+      allow read: if isMember(resource.data.patientId);
+      allow create: if canManage(request.resource.data.patientId, 'writeCareNotes')
+        && request.resource.data.authorUid == request.auth.uid;
+      allow update: if canManage(resource.data.patientId, 'writeCareNotes')
+        && request.resource.data.patientId == resource.data.patientId;
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isMember(resource.data.patientId);
+      allow write: if false;
+    }
+
+    match /fcmTokens/{tokenId} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && isMember(request.resource.data.patientId)
+        && request.resource.data.token is string;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.patientId == resource.data.patientId
+        && isMember(resource.data.patientId)
+        && request.resource.data.token is string;
+      allow read, delete: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && isMember(resource.data.patientId);
+    }
+
+    // Invitation and reminder event documents are server-only.
+    match /invitations/{invitationId} { allow read, write: if false; }
+    match /reminderEvents/{eventId} { allow read, write: if false; }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

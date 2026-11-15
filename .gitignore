@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+.firebase/
+firestore-debug.log
+ui-debug.log
+functions/lib/
+functions/node_modules/
+functions/.env*
+.env
+.env.*
+!.env.example
+.firebase/
+.DS_Store
+*.log
